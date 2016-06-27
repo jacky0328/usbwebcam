@@ -1,18 +1,20 @@
 package com.ford.openxc.webcam;
 
-import java.io.FileOutputStream;
-import java.io.IOException;
-import java.util.ArrayList;
-import java.util.List;
 
 import android.app.Service;
 import android.content.Intent;
 import android.graphics.Bitmap;
+import android.graphics.BitmapFactory;
 import android.os.Binder;
+import android.os.Environment;
 import android.os.IBinder;
 import android.util.Log;
 
-
+import java.io.File;
+import java.io.FileOutputStream;
+import java.io.IOException;
+import java.util.ArrayList;
+import java.util.List;
 
 import org.opencv.android.BaseLoaderCallback;
 import org.opencv.android.CameraBridgeViewBase.CvCameraViewFrame;
@@ -35,6 +37,7 @@ import org.opencv.imgproc.Imgproc;
 import org.opencv.utils.Converters;
 import org.opencv.core.Rect;
 
+import android.content.Context;
 public class WebcamManager extends Service {
 
     private static String TAG = "WebcamManager";
@@ -62,6 +65,7 @@ public class WebcamManager extends Service {
         }
     };
     
+    
     public class WebcamBinder extends Binder {
         public WebcamManager getService() {
             return WebcamManager.this;
@@ -72,7 +76,9 @@ public class WebcamManager extends Service {
     public void onCreate() {
         super.onCreate();
         Log.i(TAG, "Service starting");
+
         mWebcam = new NativeWebcam("/dev/video4");
+        
         
         OpenCVLoader.initAsync(OpenCVLoader.OPENCV_VERSION_2_4_10, this, mLoaderCallback);
         
@@ -80,6 +86,7 @@ public class WebcamManager extends Service {
             // Handle initialization error
               Log.i(TAG, "OpenCV load not successfully");
         }
+        
     }
 
     @Override
@@ -99,10 +106,8 @@ public class WebcamManager extends Service {
         if(!mWebcam.isAttached()) {
             stopSelf();
         }
-      
-        
         Bitmap bmp = mWebcam.getFrame();
-               
+        
         int src_w = bmp.getWidth();
         int src_h = bmp.getHeight();
         
@@ -138,65 +143,76 @@ public class WebcamManager extends Service {
         Bitmap bmp_out = Bitmap.createBitmap(src_w, src_h, conf); // this creates a MUTABLE bitmap 
         Utils.matToBitmap(mat_in, bmp_out);
                
-       // savebmp(bmp_out);
+        //savebmp(bmp);
             
-        return bmp_out;
+        Bitmap bmp_read = readbmp("/data/data/com.ford.openxc.webcam/files/out.bmp");
+        
+        return bmp_read;
         
         //return mWebcam.getFrame();
     }
-
     
     public Mat pPerspective_form(Mat mat_in, int src_w, int src_h, int out_width, int out_height){
-    	  Point p1 = new Point(0, 0); // (x,y) left top
-          Point p2 = new Point(src_w, 0); // (x,y)  right top
-          Point p3 = new Point(0, src_h); // (x,y)  left bottom
-          Point p4 = new Point(src_w, src_h); // (x,y) right bottom
-                   
-          List<Point> source = new ArrayList<Point>();
-          source.add(p1);
-          source.add(p2);
-          source.add(p3);
-          source.add(p4);
-          Mat startM = Converters.vector_Point2f_to_Mat(source);
-             
-          Point ocvPOut1 = new Point(0, 0);
-          Point ocvPOut2 = new Point(out_width, 0);
-          Point ocvPOut3 = new Point(0, out_height);
-          Point ocvPOut4 = new Point(out_width, out_height);
-          List<Point> dest = new ArrayList<Point>();
-          dest.add(ocvPOut1);
-          dest.add(ocvPOut2);
-          dest.add(ocvPOut3);
-          dest.add(ocvPOut4);
-          Mat endM = Converters.vector_Point2f_to_Mat(dest);      
-          Mat Matrix_trans = Imgproc.getPerspectiveTransform(startM, endM);
-          
-          Mat trans_mat = new Mat (out_width, out_height, CvType.CV_8UC3);
-         
-     //   pPerspective  transform
-          Imgproc.warpPerspective(mat_in, trans_mat, Matrix_trans, new Size(out_width,out_height));
-          
-          return trans_mat;
+  	  Point p1 = new Point(0, 0); // (x,y) left top
+        Point p2 = new Point(src_w, 0); // (x,y)  right top
+        Point p3 = new Point(0, src_h); // (x,y)  left bottom
+        Point p4 = new Point(src_w, src_h); // (x,y) right bottom
+                 
+        List<Point> source = new ArrayList<Point>();
+        source.add(p1);
+        source.add(p2);
+        source.add(p3);
+        source.add(p4);
+        Mat startM = Converters.vector_Point2f_to_Mat(source);
+           
+        Point ocvPOut1 = new Point(0, 0);
+        Point ocvPOut2 = new Point(out_width, 0);
+        Point ocvPOut3 = new Point(0, out_height);
+        Point ocvPOut4 = new Point(out_width, out_height);
+        List<Point> dest = new ArrayList<Point>();
+        dest.add(ocvPOut1);
+        dest.add(ocvPOut2);
+        dest.add(ocvPOut3);
+        dest.add(ocvPOut4);
+        Mat endM = Converters.vector_Point2f_to_Mat(dest);      
+        Mat Matrix_trans = Imgproc.getPerspectiveTransform(startM, endM);
+        
+        Mat trans_mat = new Mat (out_width, out_height, CvType.CV_8UC3);
+       
+   //   pPerspective  transform
+        Imgproc.warpPerspective(mat_in, trans_mat, Matrix_trans, new Size(out_width,out_height));
+        
+        return trans_mat;
+  }
+   
+    public Bitmap readbmp(String filename){
+    	
+    	Bitmap bitmap = BitmapFactory.decodeFile(filename);
+    	return bitmap;
+    	
     }
     
     public void savebmp(Bitmap bmp){
+       	
+     String filename = "out.bmp";
+      
+   	 FileOutputStream out = null;
+        try {
+        	out = openFileOutput(filename, Context.MODE_WORLD_READABLE);
+            //out = new FileOutputStream("out.bmp");
+            bmp.compress(Bitmap.CompressFormat.PNG, 100, out); // bmp is your Bitmap instance
+            // PNG is a lossless format, the compression factor (100) is ignored
+        } catch (Exception e) {
+            e.printStackTrace();
+        } finally {
+            try {
+                if (out != null) {
+                    out.close();
+                }
+            } catch (IOException e) {
+                e.printStackTrace();
+            }
+        }
    	
-    	 FileOutputStream out = null;
-         try {
-             out = new FileOutputStream("out.bmp");
-             bmp.compress(Bitmap.CompressFormat.PNG, 100, out); // bmp is your Bitmap instance
-             // PNG is a lossless format, the compression factor (100) is ignored
-         } catch (Exception e) {
-             e.printStackTrace();
-         } finally {
-             try {
-                 if (out != null) {
-                     out.close();
-                 }
-             } catch (IOException e) {
-                 e.printStackTrace();
-             }
-         }
-    	
-    }
+   }
 }
